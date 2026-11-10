@@ -19,6 +19,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.shieldguard.app.data.local.entity.*
 import com.shieldguard.app.ui.components.GlassButton
 import com.shieldguard.app.ui.components.GlassCard
