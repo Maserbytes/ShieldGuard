@@ -1,0 +1,10 @@
+<resources>
+    <string name="app_name">ShieldGuard</string>
+    <string name="notification_service_name">ShieldGuard Notification Shield</string>
+    <string name="fgs_notification_title">ShieldGuard Active</string>
+    <string name="fgs_notification_text">Protecting calls, SMS, WhatsApp &amp; Gmail</string>
+    <string name="channel_fgs_name">Protection Service</string>
+    <string name="channel_fgs_desc">Persistent notification to keep shield alive</string>
+    <string name="channel_alerts_name">Blocked Spam Alerts</string>
+    <string name="channel_alerts_desc">Alerts when spam calls or messages are blocked</string>
+</resources>
