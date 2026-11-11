@@ -136,6 +136,24 @@ fun LogsScreen(viewModel: LogsViewModel) {
                         accentColor = GmailCoral,
                         onClick = { viewModel.setFilter(CommunicationChannel.GMAIL) }
                     )
+                    GlassFilterPill(
+                        title = "Facebook",
+                        isSelected = selectedFilter == CommunicationChannel.FACEBOOK,
+                        accentColor = Color(0xFF1877F2),
+                        onClick = { viewModel.setFilter(CommunicationChannel.FACEBOOK) }
+                    )
+                    GlassFilterPill(
+                        title = "Browser",
+                        isSelected = selectedFilter == CommunicationChannel.BROWSER,
+                        accentColor = Color(0xFF38BDF8),
+                        onClick = { viewModel.setFilter(CommunicationChannel.BROWSER) }
+                    )
+                    GlassFilterPill(
+                        title = "App Store",
+                        isSelected = selectedFilter == CommunicationChannel.APP_STORE,
+                        accentColor = Color(0xFFF59E0B),
+                        onClick = { viewModel.setFilter(CommunicationChannel.APP_STORE) }
+                    )
                 }
 
                 Spacer(modifier = Modifier.height(16.dp))

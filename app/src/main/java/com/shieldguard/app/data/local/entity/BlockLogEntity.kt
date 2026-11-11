@@ -7,7 +7,11 @@ enum class CommunicationChannel {
     CALL,
     SMS,
     WHATSAPP,
-    GMAIL
+    GMAIL,
+    FACEBOOK,
+    BROWSER,
+    APP_STORE,
+    OTHER
 }
 
 @Entity(tableName = "block_logs")

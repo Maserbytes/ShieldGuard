@@ -1,6 +1,10 @@
 package com.shieldguard.app.ui.home
 
+import android.content.Intent
+import android.provider.Settings
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.ui.platform.LocalContext
+import com.shieldguard.app.service.NotificationWatchdog
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
@@ -47,6 +51,10 @@ fun HomeScreen(
     val gmailBlocked by viewModel.gmailBlocked.collectAsState()
     val recentLogs by viewModel.recentLogs.collectAsState()
     val isShieldActive by viewModel.isShieldActive.collectAsState()
+    val context = LocalContext.current
+    val isNotificationAccessGranted = remember(isShieldActive) {
+        NotificationWatchdog.isNotificationAccessGranted(context)
+    }
 
     Box(
         modifier = Modifier
@@ -206,6 +214,48 @@ fun HomeScreen(
                             checked = isShieldActive,
                             onCheckedChange = { viewModel.toggleShield(it) }
                         )
+                    }
+                }
+            }
+
+            // Notice if Notification Access is not granted
+            if (!isNotificationAccessGranted) {
+                item {
+                    GlassCard(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                context.startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
+                            },
+                        backgroundColor = Color(0x22F59E0B),
+                        borderColor = Color(0x66F59E0B)
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Warning,
+                                contentDescription = null,
+                                tint = Color(0xFFF59E0B),
+                                modifier = Modifier.size(28.dp)
+                            )
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "Notification Access Required",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = TextPrimary
+                                )
+                                Spacer(modifier = Modifier.height(2.dp))
+                                Text(
+                                    text = "Tap here to allow Notification Access. On Android 13/14, enable 'Allow restricted settings' in App info first.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = TextSecondary
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -441,6 +491,10 @@ fun GlassLogCard(log: BlockLogEntity) {
         CommunicationChannel.SMS -> Icons.Default.Message to NeonEmerald
         CommunicationChannel.WHATSAPP -> Icons.Default.Chat to WhatsAppNeon
         CommunicationChannel.GMAIL -> Icons.Default.Mail to GmailCoral
+        CommunicationChannel.FACEBOOK -> Icons.Default.Share to Color(0xFF1877F2)
+        CommunicationChannel.BROWSER -> Icons.Default.Language to Color(0xFF38BDF8)
+        CommunicationChannel.APP_STORE -> Icons.Default.ShoppingBag to Color(0xFFF59E0B)
+        CommunicationChannel.OTHER -> Icons.Default.Notifications to Color(0xFFA78BFA)
     }
 
     GlassCard(

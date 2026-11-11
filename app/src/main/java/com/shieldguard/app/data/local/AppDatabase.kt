@@ -20,7 +20,7 @@ import org.json.JSONObject
 
 @Database(
     entities = [RuleEntity::class, AllowlistEntity::class, BlockLogEntity::class],
-    version = 1,
+    version = 2,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -39,6 +39,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "shield_guard.db"
                 )
+                    .fallbackToDestructiveMigration()
                     .addCallback(DatabasePrepopulateCallback(context.applicationContext))
                     .build()
                 INSTANCE = instance

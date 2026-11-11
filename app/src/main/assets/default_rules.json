@@ -1,6 +1,6 @@
 {
-  "version": 1,
-  "updatedAt": "2026-11-08T00:00:00Z",
+  "version": 2,
+  "updatedAt": "2026-11-11T00:00:00Z",
   "rules": [
     {
       "pattern": "^(\\+?1?(800|888|877|866|855|844|833)\\d{7})$",
@@ -24,10 +24,38 @@
       "enabled": true
     },
     {
-      "pattern": "(?i)\\b(exclusive offer|flat 50% off|limited time discount|use coupon code|flash sale)\\b",
+      "pattern": "(?i)\\b(deals?|discounts?|flat \\d+%|clearance|sale|coupon( code)?|promo code|order now|free delivery|cash on delivery|cod available|buy \\d+ get \\d+|lowest price|price drop|wholesale|reseller|stock available|limited stock|dm for price|dm to order|link in bio|hot deal|amazon deal|flipkart deal|meesho|loot deal|grab now|flash sale|pre-order|free shipping|exclusive offer|use coupon code)\\b",
       "type": "NOTIFICATION_KEYWORD",
       "action": "BLOCK",
-      "description": "Promotional & advertisement notifications",
+      "description": "WhatsApp Group Product & Deals Spam",
+      "enabled": true
+    },
+    {
+      "pattern": "(?i)\\b(people you may know|friend suggestions?|suggested friends?|suggested for you|say congrats|congratulate|congratulations on|happy birthday|birthday wish|celebrating .* years? on facebook|shared a memory|trending on facebook|sent you a wave|reels? for you|suggested group)\\b",
+      "type": "NOTIFICATION_KEYWORD",
+      "action": "BLOCK",
+      "description": "Facebook Friend Suggestions & Congrats Spam",
+      "enabled": true
+    },
+    {
+      "pattern": "(?i)\\b(discord)\\b.*\\b(mentioned you|sent a message|new message|@everyone|@here|server|channel)\\b",
+      "type": "NOTIFICATION_KEYWORD",
+      "action": "BLOCK",
+      "description": "Discord Mentions via Gmail",
+      "enabled": true
+    },
+    {
+      "pattern": "(?i)\\b(breaking news|shocking|must watch|spin the wheel|win cash|daily horoscope|viral video|trending news|click to read)\\b",
+      "type": "NOTIFICATION_KEYWORD",
+      "action": "BLOCK",
+      "description": "Browser & System News Clickbait",
+      "enabled": true
+    },
+    {
+      "pattern": "(?i)\\b(popular game|trending apps?|boost your phone|clean up|free gifts?|coins? reward|daily check-in|must-have apps?|recommended apps?)\\b",
+      "type": "NOTIFICATION_KEYWORD",
+      "action": "BLOCK",
+      "description": "App Store & Bloatware Push Ads",
       "enabled": true
     },
     {

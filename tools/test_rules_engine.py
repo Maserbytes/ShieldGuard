@@ -36,10 +36,15 @@ def test_engine():
         {"type": "SMS", "input": "Your HDFC Bank OTP is 849201. Valid for 10 mins. Do not share with anyone.", "expected": "ALLOW", "label": "Critical Bank 2FA OTP"},
         {"type": "SMS", "input": "Hey, are we still meeting for lunch today at 1pm?", "expected": "ALLOW", "label": "Personal Friend SMS"},
 
-        # Notifications (WhatsApp / Gmail)
-        {"type": "NOTIFICATION", "input": "Swiggy: Flat 50% off on all pizzas! Use coupon code PIZZA50 now.", "expected": "BLOCK", "label": "Promotional Notification"},
+        # Notifications (WhatsApp Groups / Facebook / Browser / Gmail / Discord)
+        {"type": "NOTIFICATION", "input": "Deals Group: Lowest price wholesale! Order now, free delivery and COD available.", "expected": "BLOCK", "label": "WhatsApp Group Product Spam"},
+        {"type": "NOTIFICATION", "input": "Facebook: People you may know: Alex and 5 others. Add as friend.", "expected": "BLOCK", "label": "Facebook Friend Suggestions"},
+        {"type": "NOTIFICATION", "input": "Facebook: Say congrats to Michael on celebrating 3 years at TechCorp.", "expected": "BLOCK", "label": "Facebook Congrats Spam"},
+        {"type": "NOTIFICATION", "input": "Vivo Browser: Breaking news! Shocking viral video, click to read immediately.", "expected": "BLOCK", "label": "iQOO Native Browser Clickbait"},
+        {"type": "NOTIFICATION", "input": "V-Appstore: Must-have apps! Install trending apps now and get coins reward.", "expected": "BLOCK", "label": "iQOO App Store Promotion"},
+        {"type": "NOTIFICATION", "input": "Gmail: [Discord] @everyone Bob mentioned you in #crypto-chat", "expected": "BLOCK", "label": "Discord Mentions via Gmail"},
         {"type": "NOTIFICATION", "input": "Mom: Can you pick up milk on your way home?", "expected": "ALLOW", "label": "Legitimate Family Chat"},
-        {"type": "NOTIFICATION", "input": "Google: Your verification code is 382910.", "expected": "ALLOW", "label": "WhatsApp 2FA Alert"}
+        {"type": "NOTIFICATION", "input": "WhatsApp: Your Google verification code is 382910.", "expected": "ALLOW", "label": "WhatsApp 2FA Alert"}
     ]
 
     passed = 0
@@ -80,7 +85,10 @@ def test_engine():
         print(f"   Input: \"{case['input']}\"")
         print(f"   Result: {actual} (Expected: {case['expected']})\n")
 
-    print(f"Verification Result: {passed}/{total} tests passed (100% Accuracy).")
+    print(f"Verification Result: {passed}/{total} tests passed ({round(passed/total*100)}% Accuracy).")
+    return passed == total
 
 if __name__ == "__main__":
-    test_engine()
+    import sys
+    success = test_engine()
+    sys.exit(0 if success else 1)

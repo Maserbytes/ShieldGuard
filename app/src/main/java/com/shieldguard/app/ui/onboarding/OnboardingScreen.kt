@@ -160,10 +160,10 @@ fun OnboardingScreen(
                     )
                     4 -> StepGlassCard(
                         icon = Icons.Default.Notifications,
-                        title = "Notification Interceptor",
-                        description = "Permits ShieldGuard to catch and silently dismiss promotional push spam from WhatsApp and Gmail.",
+                        title = "Universal Notification Firewall",
+                        description = "Permits ShieldGuard to silently dismiss product spam from WhatsApp groups, Facebook friend suggestions, iQOO Browser clickbait, and Gmail Discord alerts.",
                         isGranted = state.isNotificationAccessGranted,
-                        actionLabel = if (state.isNotificationAccessGranted) "Notification Access Granted" else "Open Notification Settings",
+                        actionLabel = if (state.isNotificationAccessGranted) "Protection Active" else "Enable in Notification Settings",
                         accentColor = WhatsAppNeon,
                         onAction = { openNotificationSettings(context) }
                     )
