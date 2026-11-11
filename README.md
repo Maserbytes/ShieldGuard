@@ -12,7 +12,7 @@ ShieldGuard was engineered from day one to operate with **zero financial overhea
 | Layer | Traditional Model (Expensive) | ShieldGuard $0 Model |
 | :--- | :--- | :--- |
 | **Backend / Servers** | Cloud VMs / Serverless ($50 - $500/mo) | **100% Offline Local SQLite / Room DB** ($0) |
-| **Spam Intelligence** | Cloud Lookup API per call/SMS ($0.005/req) | **Local Regex + Heuristic + Quantized TFLite Engine** ($0) |
+| **Spam Intelligence** | Cloud Lookup API per call/SMS ($0.005/req) | **Local Regex + Heuristic Engine** ($0) |
 | **Community Updates**| AWS CloudFront / Cloudflare Paid CDN | **GitHub Raw / Pages as a Free Global CDN** ($0) |
 | **Distribution** | Google Play Store ($25 fee + policy ban risk)| **F-Droid + GitHub Releases + IzzyOnDroid** ($0) |
 | **User Privacy** | User contacts harvested and sold (Truecaller) | **Zero Contacts Leave The Phone (100% Private)** |
@@ -65,15 +65,25 @@ ShieldGuard was engineered from day one to operate with **zero financial overhea
 2. **SMS Engine (`SmsDeliverReceiver` & `HeadlessSmsSendService`)**:
    - Intercepts `SMS_DELIVER_ACTION` as the Default SMS app.
    - Isolates fraudulent lottery / phishing links.
-   - Preserves bank 2FA / OTP messages (`OtpGuard`).
+   - Preserves bank 2FA / OTP messages (`OtpGuard`), including alphanumeric codes.
+   - **Fails open**: if the engine throws, the message is written to the inbox rather than lost.
 3. **Notification Interceptor (`SpamNotificationListenerService`)**:
-   - Catches promotional notifications from WhatsApp and Gmail.
-   - Instantly dismisses them via `cancelNotification(sbn.key)`.
+   - Catches promotional notifications from WhatsApp, Facebook, Gmail, browsers and app stores.
+   - Dismisses them via `cancelNotification(sbn.key)`.
+   - Never touches ongoing notifications, group summaries, or a 1:1 chat with a saved contact.
    - Includes a watchdog (`NotificationWatchdog`) to recover from aggressive OEM task killers (MIUI, ColorOS, OneUI).
 4. **Persistent Shield (`ShieldForegroundService`)**:
    - Runs with `foregroundServiceType="phoneCall|specialUse"` to prevent OS process reaping.
 5. **Community Rule Sync (`RuleSyncWorker`)**:
    - Uses `WorkManager` to pull updated JSON rules from GitHub on Wi-Fi once a week for $0.
+   - Remote rules must declare a `packageScope` and may not create `CALL_REGEX` rules, so a bad
+     feed can never stop the phone from ringing.
+
+### The one rule that matters most
+
+**A message from someone you know is never filtered.** Contacts, allowlisted senders and OTPs
+short-circuit the engine before any heuristic runs. A false positive here costs a real message,
+so the engine is deliberately biased towards letting borderline traffic through.
 
 ---
 
@@ -95,7 +105,7 @@ d:\ShieldGuard\
 ├── app/
 │   ├── build.gradle.kts                     # App dependencies (Room, Compose, WorkManager)
 │   ├── proguard-rules.pro                   # Proguard optimization rules
-│   └── src/main/
+│   ├── src/main/
 │       ├── AndroidManifest.xml              # Roles, Permissions, Services & Receivers
 │       ├── assets/
 │       │   └── default_rules.json           # Seed rules (Robocalls, OTP protections)
@@ -103,7 +113,7 @@ d:\ShieldGuard\
 │           ├── ShieldGuardApp.kt            # App class & Notification Channel setup
 │           ├── data/
 │           │   ├── local/
-│           │   │   ├── AppDatabase.kt       # Room SQLite database with prepopulation
+│           │   │   ├── AppDatabase.kt       # Room SQLite + v2->v3 migration + seeding
 │           │   │   ├── dao/                 # RuleDao, AllowlistDao, BlockLogDao
 │           │   │   └── entity/              # RuleEntity, AllowlistEntity, BlockLogEntity
 │           │   └── repository/
@@ -111,8 +121,9 @@ d:\ShieldGuard\
 │           ├── engine/
 │           │   ├── FilterDecision.kt        # Decision sealed classes (Allow, Block, Silence)
 │           │   ├── EmergencyGuard.kt        # 911 / 112 / 999 non-negotiable pass
-│           │   ├── OtpGuard.kt              # Bank 2FA & OTP protector
-│           │   └── SpamEngine.kt            # Central evaluation engine
+│           │   ├── OtpGuard.kt              # Bank 2FA & OTP protector (pure)
+│           │   ├── SpamPolicy.kt            # Pure decision core + rule compiler (no Android)
+│           │   └── SpamEngine.kt            # Android adapter: rules, allowlist, contacts
 │           ├── service/
 │           │   ├── SpamCallScreeningService.kt
 │           │   ├── InCallServiceImpl.kt
@@ -133,8 +144,11 @@ d:\ShieldGuard\
 │               ├── home/                    # Shield status & metrics dashboard
 │               ├── rules/                   # Spam rules & allowlist manager
 │               └── logs/                    # Audit logs of blocked items
+│   └── src/test/java/com/shieldguard/app/engine/
+│       ├── SpamPolicyTest.kt                # JVM tests for the filtering decisions
+│       └── OtpGuardTest.kt                  # JVM tests for OTP / transaction protection
 └── tools/
-    ├── test_rules_engine.py                 # Local offline Python verification suite
+    ├── validate_rules.py                    # Rule-file schema & regex validator
     └── generate_offline_dataset.py          # Offline training dataset generator
 ```
 
@@ -142,31 +156,37 @@ d:\ShieldGuard\
 
 ## 🛠️ Verification & Testing
 
-Run the included rule verification test suite using Python:
+The filtering logic is covered by real Kotlin unit tests that run on the JVM — no emulator, no
+device, milliseconds per run:
 
 ```bash
-python tools/test_rules_engine.py
+./gradlew testDebugUnitTest
 ```
 
-Output:
-```
-==================================================
-      ShieldGuard $0 Rules Verification Suite     
-==================================================
-[PASSED] US Toll-Free Robocall
-[PASSED] India 140 Telemarketer Series
-[PASSED] Legitimate Personal Caller
-[PASSED] Emergency Number
-[PASSED] Scam Lottery SMS
-[PASSED] Loan Promotion SMS
-[PASSED] Critical Bank 2FA OTP
-[PASSED] Personal Friend SMS
-[PASSED] Promotional Notification
-[PASSED] Legitimate Family Chat
-[PASSED] WhatsApp 2FA Alert
+They assert the behaviour that actually matters, including the cases that previously failed:
 
-Verification Result: 11/11 tests passed (100% Accuracy).
+| Case | Expected |
+| :--- | :--- |
+| WhatsApp 1:1 from a saved contact saying "order now / free delivery" | **Allowed** |
+| WhatsApp group deal spam | Blocked |
+| Bundled WhatsApp rule firing on a Gmail notification | Not applied |
+| Bank OTP in a notification that also matches a spam rule | **Allowed** |
+| Unknown third-party app pushed "trending apps" | **Allowed** |
+| A user-written rule against a saved contact | Blocked (user rules outrank the guard) |
+| Invalid regex in a rule | Ignored, never crashes |
+| Emergency number matching a block rule | **Allowed** |
+
+Rules-file sanity check (structure, scopes, regex validity):
+
+```bash
+python tools/validate_rules.py
 ```
+
+> **Why not a Python test suite?** This repo previously shipped
+> `tools/test_rules_engine.py` and `tools/test_android_harness.py`, which re-implemented the
+> Kotlin engine in Python and simulated the Android subsystem. They were removed: they drifted
+> from the real code (the OTP copy had already lost half the patterns) and could not see contact
+> lookups, package scoping or rule precedence. A green mirror proves nothing about the APK.
 
 ---
 
@@ -180,6 +200,53 @@ Verification Result: 11/11 tests passed (100% Accuracy).
    ```
 4. Output APK location:
    `app/build/outputs/apk/release/app-release.apk`
+
+### Release signing (required for updates)
+
+The build reads signing material from `keystore.properties` at the repo root (git-ignored):
+
+```properties
+storeFile=release.keystore
+storePassword=…
+keyAlias=shieldguard
+keyPassword=…
+```
+
+Create the key once and **keep it safe**:
+
+```bash
+keytool -genkeypair -v -keystore release.keystore -alias shieldguard \
+        -keyalg RSA -keysize 4096 -validity 10000
+```
+
+If the file is missing, `assembleRelease` still works but is signed with the throwaway debug
+key and logs a warning. That APK can never be updated in place, because the debug key is
+regenerated per machine — CI refuses to publish it for exactly this reason.
+
+For CI, add four repository secrets: `SIGNING_KEY_BASE64` (`base64 -w0 release.keystore`),
+`KEY_STORE_PASSWORD`, `KEY_ALIAS`, `KEY_PASSWORD`.
+
+### Version codes
+
+`versionCode` is the git commit count (or `$VERSION_CODE` when set, which CI does), and
+`versionName` is `1.0.<count>`. A constant version code would make Android reject every update
+after the first install.
+
 5. **Distribution**:
    - Host the `.apk` on **GitHub Releases** (100% free hosting and unlimited downloads).
    - Submit your repo to **F-Droid** or **IzzyOnDroid** for automated open-source builds.
+
+### F-Droid notes
+
+- F-Droid builds from source, so the tag it builds must be immutable. Releases are tagged
+  `build-<run>-<sha>`, never a moving `latest`.
+- The app declares `INTERNET` for one purpose: a weekly `GET` of the public community rule
+  JSON. No telemetry, no accounts, nothing uploaded. Expect the "NonFreeNet" anti-feature
+  marker; the justification above is the one to submit.
+- `android:allowBackup="false"`: blocked-message metadata must not end up in a cloud backup.
+
+### Roadmap
+
+- Tier 3, an on-device scoring/quantized model, is **not shipped**. The current engine is
+  Tier 1 (contacts, allowlist, OTP) + Tier 2 (regex, keywords, scoped heuristics). A scorer
+  only becomes worth building once the false-positive rate above is measurably zero.

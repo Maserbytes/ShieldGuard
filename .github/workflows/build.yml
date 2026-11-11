@@ -1,8 +1,9 @@
-name: Build and Release ShieldGuard APK
+name: Build, Test and Release ShieldGuard APK
 
 on:
   push:
-    branches: [ main, master ]
+    branches: [ '**' ]
+  pull_request:
   workflow_dispatch:
 
 permissions:
@@ -12,9 +13,17 @@ jobs:
   build:
     runs-on: ubuntu-latest
 
+    env:
+      # Evaluated once here because the `secrets` context is not allowed inside `if:`.
+      HAS_SIGNING: ${{ secrets.SIGNING_KEY_BASE64 != '' }}
+
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
+        with:
+          # Full history: the version code is derived from the commit count, and a shallow
+          # clone would pin it to 1 forever and block every later update.
+          fetch-depth: 0
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
@@ -23,33 +32,83 @@ jobs:
           distribution: 'temurin'
 
       - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v3
+        uses: gradle/actions/setup-gradle@v4
 
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
 
-      - name: Build Debug APK
-        run: ./gradlew assembleDebug --no-daemon --stacktrace
+      # Runs the pure-JVM engine tests. These are the tests that actually prove the filtering
+      # logic; they must pass before anything is packaged.
+      - name: Run engine unit tests
+        run: ./gradlew testDebugUnitTest --no-daemon --stacktrace
 
-      - name: Rename APK for Easy Install
-        run: cp app/build/outputs/apk/debug/app-debug.apk ShieldGuard.apk
-
-      - name: Upload Artifact
+      - name: Publish test report
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: ShieldGuard-APK
-          path: ShieldGuard.apk
+          name: unit-test-report
+          path: app/build/reports/tests/
+          if-no-files-found: ignore
 
-      - name: Create Instant GitHub Release
-        uses: softprops/action-gh-release@v2
-        if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+      - name: Build Debug APK
+        env:
+          VERSION_CODE: ${{ github.run_number }}
+        run: ./gradlew assembleDebug --no-daemon --stacktrace
+
+      - name: Configure release signing
+        if: env.HAS_SIGNING == 'true'
+        run: |
+          echo "${{ secrets.SIGNING_KEY_BASE64 }}" | base64 -d > release.keystore
+          cat > keystore.properties <<EOF
+          storeFile=release.keystore
+          storePassword=${{ secrets.KEY_STORE_PASSWORD }}
+          keyAlias=${{ secrets.KEY_ALIAS }}
+          keyPassword=${{ secrets.KEY_PASSWORD }}
+          EOF
+
+      # A release build is attempted even without signing material so that R8/ProGuard problems
+      # are caught here instead of on a user's phone. Without a keystore it is signed with the
+      # throwaway debug key and is explicitly not published.
+      - name: Build Release APK
+        env:
+          VERSION_CODE: ${{ github.run_number }}
+        run: ./gradlew assembleRelease --no-daemon --stacktrace
+
+      - name: Name the artifacts
+        run: |
+          cp app/build/outputs/apk/debug/app-debug.apk ShieldGuard-debug.apk
+          if [ -f app/build/outputs/apk/release/app-release.apk ]; then
+            cp app/build/outputs/apk/release/app-release.apk ShieldGuard.apk
+          fi
+
+      - name: Upload Debug Artifact
+        uses: actions/upload-artifact@v4
         with:
-          tag_name: latest
-          name: "ShieldGuard Latest Build"
+          name: ShieldGuard-debug-apk
+          path: ShieldGuard-debug.apk
+
+      - name: Upload Release Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ShieldGuard-release-apk
+          path: ShieldGuard.apk
+          if-no-files-found: ignore
+
+      # Publishing only happens for real pushes to main, with a real signing key. Publishing a
+      # debug-key APK would leave every user unable to install the next update.
+      - name: Publish GitHub Release
+        if: env.HAS_SIGNING == 'true' && github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: build-${{ github.run_number }}-${{ github.sha }}
+          name: "ShieldGuard build ${{ github.run_number }}"
+          make_latest: true
           body: |
-            ### 🛡️ ShieldGuard Glassy APK
-            - Direct download for your Android phone.
-            - Tap **ShieldGuard.apk** below to download and install.
+            ### ShieldGuard — signed release
+            - Built from `${{ github.sha }}`
+            - Version code: ${{ github.run_number }}
+            - Signed with the project release key, so it installs over previous versions.
+            - Download **ShieldGuard.apk** below.
           draft: false
           prerelease: false
           files: ShieldGuard.apk

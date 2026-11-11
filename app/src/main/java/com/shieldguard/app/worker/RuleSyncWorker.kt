@@ -1,7 +1,14 @@
 package com.shieldguard.app.worker
 
 import android.content.Context
-import androidx.work.*
+import androidx.work.BackoffPolicy
+import androidx.work.Constraints
+import androidx.work.CoroutineWorker
+import androidx.work.ExistingPeriodicWorkPolicy
+import androidx.work.NetworkType
+import androidx.work.PeriodicWorkRequestBuilder
+import androidx.work.WorkManager
+import androidx.work.WorkerParameters
 import com.shieldguard.app.data.local.AppDatabase
 import com.shieldguard.app.data.local.entity.RuleAction
 import com.shieldguard.app.data.local.entity.RuleEntity
@@ -20,9 +27,27 @@ class RuleSyncWorker(
 
     companion object {
         const val WORK_NAME = "rule_sync_work"
-        // Free public GitHub raw repository or Gist for community rules ($0 hosting)
+
+        /** Free, public, zero-cost rule distribution via GitHub raw. */
         private const val DEFAULT_COMMUNITY_RULES_URL =
             "https://raw.githubusercontent.com/ShieldGuardApp/community-spam-rules/main/default_rules.json"
+
+        /**
+         * Types the community feed is allowed to create.
+         *
+         * CALL_REGEX is excluded on purpose: a hostile or mistaken pattern there could stop the
+         * phone ringing for real callers, with no notification the user would ever see. Call
+         * blocking stays a local, user-controlled decision.
+         */
+        private val REMOTE_ALLOWED_TYPES = setOf(
+            RuleType.SMS_KEYWORD,
+            RuleType.SMS_REGEX,
+            RuleType.NOTIFICATION_KEYWORD,
+            RuleType.NOTIFICATION_REGEX,
+            RuleType.WHITELIST_REGEX,
+        )
+
+        private const val MAX_REMOTE_RULES = 500
 
         fun schedule(context: Context) {
             val constraints = Constraints.Builder()
@@ -47,46 +72,65 @@ class RuleSyncWorker(
     }
 
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
+        var connection: HttpURLConnection? = null
         try {
-            val url = URL(DEFAULT_COMMUNITY_RULES_URL)
-            val connection = (url.openConnection() as HttpURLConnection).apply {
+            connection = (URL(DEFAULT_COMMUNITY_RULES_URL).openConnection() as HttpURLConnection).apply {
                 connectTimeout = 10_000
                 readTimeout = 15_000
                 requestMethod = "GET"
                 setRequestProperty("User-Agent", "ShieldGuard-Android/1.0")
             }
 
-            if (connection.responseCode == HttpURLConnection.HTTP_OK) {
-                val jsonText = connection.inputStream.bufferedReader().use { it.readText() }
-                val jsonObject = JSONObject(jsonText)
-                val rulesArray = jsonObject.getJSONArray("rules")
-                val ruleList = mutableListOf<RuleEntity>()
-
-                for (i in 0 until rulesArray.length()) {
-                    val item = rulesArray.getJSONObject(i)
-                    ruleList.add(
-                        RuleEntity(
-                            pattern = item.getString("pattern"),
-                            type = RuleType.valueOf(item.getString("type")),
-                            action = RuleAction.valueOf(item.getString("action")),
-                            description = item.optString("description", "Community Rule"),
-                            isEnabled = item.optBoolean("enabled", true),
-                            isUserCreated = false
-                        )
-                    )
-                }
-
-                if (ruleList.isNotEmpty()) {
-                    val db = AppDatabase.getInstance(applicationContext)
-                    db.ruleDao().insertRules(ruleList)
-                }
-                Result.success()
-            } else {
-                Result.retry()
+            if (connection.responseCode != HttpURLConnection.HTTP_OK) {
+                return@withContext Result.retry()
             }
+
+            val jsonText = connection.inputStream.bufferedReader().use { it.readText() }
+            val rules = parseRules(jsonText)
+            if (rules.isEmpty()) return@withContext Result.success()
+
+            AppDatabase.getInstance(applicationContext).ruleDao().insertRules(rules)
+            Result.success()
         } catch (e: Exception) {
-            // Offline or network error: gracefully retry without disturbing the user
+            // Offline or malformed feed: retry later without disturbing the user.
             Result.retry()
+        } finally {
+            connection?.disconnect()
         }
+    }
+
+    /**
+     * Parses the remote feed defensively. One malformed entry must not discard the whole batch,
+     * and every entry is clamped to a known type and a real package scope.
+     */
+    private fun parseRules(jsonText: String): List<RuleEntity> {
+        val array = runCatching { JSONObject(jsonText).getJSONArray("rules") }.getOrNull()
+            ?: return emptyList()
+
+        val rules = mutableListOf<RuleEntity>()
+        for (i in 0 until minOf(array.length(), MAX_REMOTE_RULES)) {
+            val item = runCatching { array.getJSONObject(i) }.getOrNull() ?: continue
+            val type = runCatching { RuleType.valueOf(item.getString("type")) }.getOrNull() ?: continue
+            if (type !in REMOTE_ALLOWED_TYPES) continue
+
+            val pattern = runCatching { item.getString("pattern") }.getOrNull()
+            if (pattern.isNullOrBlank()) continue
+
+            rules.add(
+                RuleEntity(
+                    pattern = pattern,
+                    type = type,
+                    action = runCatching { RuleAction.valueOf(item.getString("action")) }
+                        .getOrDefault(RuleAction.BLOCK),
+                    description = item.optString("description", "Community rule"),
+                    isEnabled = item.optBoolean("enabled", true),
+                    isUserCreated = false,
+                    // Remote rules MUST declare their scope. Defaulting to "*" here is what
+                    // previously let a WhatsApp rule silence unrelated apps.
+                    packageScope = item.optString("packageScope", ""),
+                )
+            )
+        }
+        return rules.filter { it.packageScope.isNotBlank() }
     }
 }

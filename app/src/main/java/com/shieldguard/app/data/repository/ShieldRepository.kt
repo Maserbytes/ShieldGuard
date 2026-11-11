@@ -32,6 +32,10 @@ class ShieldRepository(private val context: Context) {
         ruleDao.getActiveRules()
     }
 
+    suspend fun getAllowlist(): List<AllowlistEntity> = withContext(Dispatchers.IO) {
+        allowlistDao.getActiveAllowlist()
+    }
+
     suspend fun insertRule(rule: RuleEntity) = withContext(Dispatchers.IO) {
         ruleDao.insertRule(rule)
     }
@@ -102,5 +106,36 @@ class ShieldRepository(private val context: Context) {
 
     suspend fun isExplicitlyAllowed(value: String, type: AllowlistType): Boolean = withContext(Dispatchers.IO) {
         allowlistDao.isAllowed(value, type)
+    }
+
+    /**
+     * Checks whether a *display name* belongs to a saved contact.
+     *
+     * Messaging notifications carry a sender name ("Aarav Sharma"), never a phone number, so
+     * [isContact] cannot protect them. Without this check a saved friend writing "I'll order
+     * now" would be treated as an unknown sender and could be filtered.
+     */
+    suspend fun isContactByName(displayName: String): Boolean = withContext(Dispatchers.IO) {
+        val name = displayName.trim()
+        // Single/short names produce far too many coincidental matches to be a safe signal.
+        if (name.length < 3) return@withContext false
+        try {
+            val projection = arrayOf(ContactsContract.Contacts._ID)
+            val selection = "${ContactsContract.Contacts.DISPLAY_NAME} = ? COLLATE NOCASE"
+            context.contentResolver.query(
+                ContactsContract.Contacts.CONTENT_URI,
+                projection,
+                selection,
+                arrayOf(name),
+                null
+            )?.use { cursor ->
+                return@withContext cursor.moveToFirst()
+            }
+        } catch (e: SecurityException) {
+            // Contacts permission not granted: fail open (never block because of a missing grant)
+        } catch (e: Exception) {
+            // Same reasoning: an unreadable contacts provider must not turn into silent blocking.
+        }
+        false
     }
 }
