@@ -14,3 +14,13 @@
 .cxx
 local.properties
 /app/build
+
+# Release signing material must never be committed.
+keystore.properties
+*.jks
+*.keystore
+release.keystore
+
+# Python
+__pycache__/
+*.pyc

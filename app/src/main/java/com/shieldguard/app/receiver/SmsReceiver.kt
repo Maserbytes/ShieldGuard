@@ -36,14 +36,19 @@ class SmsReceiver : BroadcastReceiver() {
             try {
                 val decision = spamEngine.evaluateSms(sender, body)
                 if (decision is FilterDecision.Block) {
+                    // SMS_RECEIVED is an ordered broadcast: aborting here stops the message from
+                    // reaching the system's default SMS parser and inbox.
+                    abortBroadcast()
+
                     repository.logBlockedEvent(
                         channel = CommunicationChannel.SMS,
                         sender = sender,
                         snippet = body.take(150),
-                        reason = "${decision.reason} (Detected via secondary listener)"
+                        reason = "${decision.reason} (secondary listener)",
                     )
                 }
             } catch (e: Exception) {
+                // Fail open: if a rule blows up, the message must still reach the user.
                 e.printStackTrace()
             } finally {
                 pendingResult.finish()

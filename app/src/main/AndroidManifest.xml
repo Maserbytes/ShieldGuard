@@ -28,13 +28,17 @@
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 
-    <!-- Zero-cost Community Rules Sync via GitHub -->
+    <!-- Zero-cost Community Rules Sync via GitHub.
+         This is the ONLY network use in the app: a weekly GET of a public JSON rules file.
+         No telemetry, no accounts, no user data is ever uploaded. -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
     <application
         android:name=".ShieldGuardApp"
-        android:allowBackup="true"
+        android:allowBackup="false"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:fullBackupContent="false"
         android:icon="@drawable/ic_shield"
         android:label="@string/app_name"
         android:roundIcon="@drawable/ic_shield"
@@ -129,12 +133,14 @@
             </intent-filter>
         </receiver>
 
-        <!-- 6. Secondary SMS Receiver -->
+        <!-- 6. Secondary SMS Receiver (non-default mode).
+             priority=999 so this receiver runs before the system's default SMS parser and can
+             abort an ordered SMS_RECEIVED broadcast for a blocked message. -->
         <receiver
             android:name=".receiver.SmsReceiver"
             android:permission="android.permission.BROADCAST_SMS"
             android:exported="true">
-            <intent-filter>
+            <intent-filter android:priority="999">
                 <action android:name="android.provider.Telephony.SMS_RECEIVED" />
             </intent-filter>
         </receiver>

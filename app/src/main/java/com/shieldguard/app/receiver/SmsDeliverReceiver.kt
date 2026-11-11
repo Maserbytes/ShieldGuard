@@ -39,26 +39,34 @@ class SmsDeliverReceiver : BroadcastReceiver() {
         val repository = ShieldRepository(context.applicationContext)
 
         scope.launch {
+            var handled = false
             try {
                 val decision = spamEngine.evaluateSms(sender, fullBody)
                 when (decision) {
                     is FilterDecision.Block -> {
-                        // Dropped / Halted from reaching native user inbox
+                        // Dropped before it can reach the user's inbox.
                         repository.logBlockedEvent(
                             channel = CommunicationChannel.SMS,
                             sender = sender,
                             snippet = fullBody.take(150),
-                            reason = decision.reason
+                            reason = decision.reason,
                         )
+                        handled = true
                     }
                     is FilterDecision.Silence, is FilterDecision.Allow -> {
-                        // Safe message: persist to system SMS Inbox provider
                         saveSmsToInbox(context, sender, fullBody, messages[0].timestampMillis)
+                        handled = true
                     }
                 }
             } catch (e: Exception) {
                 e.printStackTrace()
             } finally {
+                // Fail open. If anything above failed, the message has not been persisted yet and
+                // this receiver is the default SMS app: dropping it here would silently destroy
+                // the user's message with no inbox copy and no notification.
+                if (!handled) {
+                    saveSmsToInbox(context, sender, fullBody, messages[0].timestampMillis)
+                }
                 pendingResult.finish()
             }
         }
